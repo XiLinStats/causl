@@ -203,7 +203,7 @@ nll2 <- function(theta, dat, mm, beta, phi, inCop, fam_cop=1,
   beta[beta > 0] <- theta[seq_len(np)]
   phi[phi > 0] <- theta[-seq_len(np)]
 
-  -sum(ll(dat, mm=mm, beta=beta, phi=phi, inCop=inCop, fam_cop=fam_cop,
+  -sum(ll_new(dat, mm=mm, beta=beta, phi=phi, inCop=inCop, fam_cop=fam_cop,
       family=family, link=link, par2=par2, useC=useC))
 }
 
@@ -319,6 +319,120 @@ ll <- function(dat, mm, beta, phi, inCop, fam_cop=1,
   out
 }
 
+# fix bug in truncation
+ll_new <- function(dat, mm, beta, phi, inCop, fam_cop=1,
+               family=rep(1,nc), link, par2=NULL, useC=TRUE,
+               exclude_Z = FALSE, outcome = "y") {
+  
+  if (missing(inCop)) inCop <- seq_along(dat)
+  
+  if (missing(link)) {
+    fams <- familyVals[match(family, familyVals$val),2]
+    link <- sapply(fams, function(x) linksList[[x]][1])
+  }
+  
+  if (any(phi < 0)) return(-Inf)
+  
+  nv <- length(phi)
+  nc <- length(inCop)
+  if (length(family) != nc) stop(paste0("family should have length ", nc))
+  else if (nv != nc) stop(paste0("phi should have length ", nv))
+  
+  if (fam_cop == 2 && any(par2 <= 0)) stop("par2 must be positive for t-copula")
+  
+  ## compute etas for each variable
+  eta <- mm %*% beta
+  
+ mu <- eta2mu(eta[,1:nc], link)
+  
+  ## get the densities for each observation
+  log_den <- dat_u <- matrix(NA, nrow(dat), nc)
+  # if (length(family) < nc) family <- rep_len(family, nc)
+  
+  ## get univariate densities
+  for (i in which(family != 5)) {
+    tmp <- univarDens(dat[,i], eta[,i], phi=phi[i], family=family[i])
+    log_den[,i] <- tmp$ld
+    dat_u[,i] <- pmax(pmin(tmp$u,1-1e-10),1e-10)
+  }
+  # wh_trunc = 0
+  ## deal with discrete variables separately
+  for (i in which(family == 5)) {
+    # wh_trunc <- wh_trunc + 1
+    tmp <- univarDens(dat[,i], eta[,i], family=family[i])
+    log_den[,i] <- tmp$ld
+    dat_u[,i] <- tmp$u
+  }
+  
+  ## now set up copula parameters
+  ncv <- length(inCop)
+  par <- vector(mode="list", length=choose(ncv,2))
+  
+  for (i in seq_len(choose(ncv,2))) {
+    if (fam_cop <= 2 || fam_cop == 11) {
+      par[[i]] <- pmin(pmax(2*expit(eta[,i+nv])-1, -1+1e-10), 1-1e-10)
+    }
+    else if (fam_cop == 3) {
+      par[[i]] <- exp(eta[,i+nv])
+    }
+    else if (fam_cop == 4 || fam_cop == 6) {
+      par[[i]] <- exp(eta[,i+nv])+1
+    }
+    else if (fam_cop == 5) {
+      par[[i]] <- eta[,i+nv]
+    }
+  }
+  
+  ## define appropriate matrices
+  if (fam_cop != 11) {
+    if (ncv > 2 || fam_cop <= 2) {
+      Sigma <- rep(diag(ncv), length(par[[1]]))
+      dim(Sigma) <- c(ncv,ncv,length(par[[1]]))
+      k = 1
+      for (j in seq_len(ncv)[-1]) for (i in seq_len(j-1)) {
+        Sigma[i,j,] <- Sigma[j,i,] <- par[[k]]
+        k <- k+1
+      }
+      
+      ## deal with Gaussian and t-copulas
+      if (fam_cop == 1) {
+        if (any(family == 5 | family == 0)) {
+          # new_ord <- order(family[inCop])
+          dat_u2 <- dat_u[,inCop,drop=FALSE]#[,new_ord,drop=FALSE]
+          eta2 <- mu[,inCop,drop=FALSE]
+          # Sigma <- Sigma[new_ord,new_ord,,drop=FALSE]
+          cop <- dGaussDiscCop(dat_u2, eta = eta2, Sigma=Sigma, trunc=attr(mm, "trunc"), log=TRUE, useC=useC)
+        }
+        else cop <- dGaussCop(dat_u[,inCop,drop=FALSE], Sigma=Sigma, log=TRUE, useC=useC)
+        
+        # cop <- dGaussCop(dat_u[,inCop,drop=FALSE], Sigma=Sigma, log=TRUE, useC=useC)
+      }
+      else if (fam_cop == 2) {
+        #q_dat <- qt(as.matrix(dat_u), df=par2)
+        cop <- dtCop(dat_u[,inCop,drop=FALSE], Sigma=Sigma, df=par2, log=TRUE)
+      }
+      else stop("Only Gaussian and t-copulas implemented for more than two dimensions")
+    }
+    else if (nc == 2) {
+      ### MODIFY THIS TO USE copula PACKAGE!
+      cop <- log(VineCopula::BiCopPDF(dat_u[,1], dat_u[,2], family=fam_cop, par=par[[1]], par2=par2))
+    }
+    else stop("should have that nc is an integer >= 2")
+  }
+  else {
+    cop <- log(causl::dfgmCopula(dat_u[,1], dat_u[,2], alpha=par[[1]]))
+  }
+  
+  if (exclude_Z == FALSE) {
+    out <- cop + rowSums(log_den)
+    
+  } else{
+    wh_y <- which(colnames(dat) == outcome)
+    out <- cop + log_den[,wh_y]
+  }
+  
+  out
+}
 ##' Extract parameter estimates and standard errors
 ##'
 ##' @param fit output of \code{optim}

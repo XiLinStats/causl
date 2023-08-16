@@ -250,7 +250,7 @@ dfgmCopula <- function(u1, u2, alpha) {
 ##' @importFrom mvtnorm pmvnorm
 ##'
 ##' @export
-dGaussDiscCop <- function(x, Sigma, trunc, log=FALSE, useC=TRUE) {
+dGaussDiscCop <- function(x, eta, Sigma, trunc, log=FALSE, useC=TRUE) {
 
   if(is.null(dim(x)) || length(dim(x)) != 2) stop("x must be a matrix-like object")
   if(is.null(dim(Sigma))) stop("Sigma must be a matrix-like object")
@@ -299,7 +299,8 @@ dGaussDiscCop <- function(x, Sigma, trunc, log=FALSE, useC=TRUE) {
       else return(exp(out))
     }
     else {
-      out <- c(dGDcop_sig(x, Sigma, trunc=trunc, logd = TRUE))
+      trunc_mat <- as.matrix(1 - eta[, seq(ncol(eta) - length(trunc) + 1, ncol(eta))])
+      out <- c(dGDcop_sig_bin(x, Sigma, trunc = trunc_mat, logd = TRUE))
       if (log) return(out)
       else return(exp(out))
     }
