@@ -85,19 +85,19 @@ fitCausal <- function(dat, formulas=list(y~x, z~1, ~x),
     }
 
     ## then move discrete variables to the end
-    wh_cnt <- which(!disc)
-    new_ord <- c(wh_cnt, wh_disc, length(forms))
-    new_ord0 <- new_ord[-length(new_ord)]
-    
-    
-    ord <- seq_len(ncol(dat))  
-    ord[match(inCop,names(dat))] <- ord[match(inCop,names(dat))[new_ord0]]
-    dat <- dat[,ord]
-    
-    LHS <- LHS[new_ord0]
-    forms <- forms[new_ord]
-    family <- family[new_ord]
-    link <- link[new_ord0]
+    # wh_cnt <- which(!disc)
+    # new_ord <- c(wh_cnt, wh_disc, length(forms))
+    # new_ord0 <- new_ord[-length(new_ord)]
+    # 
+    # 
+    # ord <- seq_len(ncol(dat))  
+    # ord[match(inCop,names(dat))] <- ord[match(inCop,names(dat))[new_ord0]]
+    # dat <- dat[,ord]
+    # 
+    # LHS <- LHS[new_ord0]
+    # forms <- forms[new_ord]
+    # family <- family[new_ord]
+    # link <- link[new_ord0]
   }
 
   full_form <- merge_formulas(forms)

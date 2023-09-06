@@ -209,7 +209,8 @@ nll2 <- function(theta, dat, mm, beta, phi, inCop, fam_cop=1,
 
 
 ll <- function(dat, mm, beta, phi, inCop, fam_cop=1,
-                 family=rep(1,nc), link, par2=NULL, useC=TRUE) {
+                 family=rep(1,nc), link, par2=NULL, useC=TRUE,
+               exclude_Z = FALSE, outcome = "y") {
 
   if (missing(inCop)) inCop <- seq_along(dat)
 
@@ -247,8 +248,8 @@ ll <- function(dat, mm, beta, phi, inCop, fam_cop=1,
   for (i in which(family == 5)) {
     # wh_trunc <- wh_trunc + 1
     tmp <- univarDens(dat[,i], eta[,i], family=family[i])
-    # log_den[,i] <- tmp$ld
-    log_den[,i] <- 0 #### CHANGED HERE XI
+    log_den[,i] <- tmp$ld
+    # log_den[,i] <- 0 #### CHANGED HERE XI
     dat_u[,i] <- tmp$u
   }
 
@@ -285,14 +286,15 @@ ll <- function(dat, mm, beta, phi, inCop, fam_cop=1,
       ## deal with Gaussian and t-copulas
       if (fam_cop == 1) {
         if (any(family == 5 | family == 0)) {
-          # new_ord <- order(family[inCop])
-          dat_u2 <- dat_u[,inCop,drop=FALSE]#[,new_ord,drop=FALSE]
-          # Sigma <- Sigma[new_ord,new_ord,,drop=FALSE]
+          new_ord <- order(family[inCop])
+          dat_u2 <- dat_u[,inCop,drop=FALSE][,new_ord,drop=FALSE]
+          Sigma <- Sigma[new_ord,new_ord,,drop=FALSE]
+          eta <- eta[,inCop,drop=FALSE][,new_ord,drop=FALSE]
           eta2 <- eta
           # columns of eta that correspond to discrete variables
           eta_disc <- as.matrix(eta[,(nc - ndisc+1):nc])
           # link functions that correspond to discrete variables
-          link_disc <- link[(nc - ndisc+1):nc]
+          link_disc <- link[new_ord][(nc - ndisc+1):nc]
           # which columns to convert
           eta_disc[,which(link_disc == "logit")] <- qnorm(expit(eta_disc[,which(link_disc == "logit")]))
           
@@ -301,7 +303,7 @@ ll <- function(dat, mm, beta, phi, inCop, fam_cop=1,
           # conversion from logit to probit scale
           # eta2[,(nc - ndisc+1):nc] <- qnorm(expit(eta[,(nc - ndisc+1):nc]))
           
-          cop <- dGaussDiscCop2(dat_u2, m = ndisc, Sigma=Sigma, eta=eta2[,inCop,drop=FALSE], log=TRUE, useC=useC)
+          cop <- dGaussDiscCop2(dat_u2, m = ndisc, Sigma=Sigma, eta=eta2, log=TRUE, useC=useC)
         }
         else cop <- dGaussCop(dat_u[,inCop,drop=FALSE], Sigma=Sigma, log=TRUE, useC=useC)
 
@@ -322,9 +324,15 @@ ll <- function(dat, mm, beta, phi, inCop, fam_cop=1,
   else {
     cop <- log(causl::dfgmCopula(dat_u[,1], dat_u[,2], alpha=par[[1]]))
   }
-
-  out <- cop + rowSums(log_den)
-
+  
+  if (exclude_Z == FALSE) {
+    out <- cop + rowSums(log_den)
+    
+  } else{
+    wh_y <- which(colnames(dat) == outcome)
+    out <- cop + log_den[,wh_y]
+  }
+  
   out
 }
 
